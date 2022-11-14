@@ -15,8 +15,8 @@ class unsignedfpadder(expWidth: Int, mntWidth: Int) extends Module
   val sign_b = io.b(expWidth+mntWidth)
   val exp_a = io.a(expWidth + mntWidth - 1, mntWidth)
   val exp_b = io.b(expWidth + mntWidth - 1, mntWidth)
-  val mnt_a = Cat(1.U(0.W), io.a(mntWidth-1, 0))
-  val mnt_b = Cat(1.U(0.W), io.b(mntWidth-1, 0))
+  val mnt_a = Cat(1.U(1.W), io.a(mntWidth-1, 0))
+  val mnt_b = Cat(1.U(1.W), io.b(mntWidth-1, 0))
   val aZero = ~exp_a.orR 
   val bZero = ~exp_b.orR 
 
@@ -41,7 +41,7 @@ class unsignedfpadder(expWidth: Int, mntWidth: Int) extends Module
   val diff_exp = exp_a.zext - exp_b.zext
   val alb_exp = diff_exp < 0.S
 
-  val diff_exp_mag = Mux(alb_exp, (-diff_exp)(expWidth-1,0), diff_exp(exp_width-1,0));
+  val diff_exp_mag = Mux(alb_exp, (-diff_exp)(expWidth-1,0), diff_exp(expWidth-1,0));
   val o_exp1 = Mux(alb_exp, exp_b, exp_a)
   val a_mnts = Mux(alb_exp, mnt_b, mnt_a)
   val b_mnts = Mux(alb_exp, mnt_a, mnt_b)
@@ -49,22 +49,22 @@ class unsignedfpadder(expWidth: Int, mntWidth: Int) extends Module
   //--------------------------------------------------------------------------
   // 2. Shifting and Complementing
   //--------------------------------------------------------------------------
-  val shifted_b_mnts_2pw = Cat(b_mnts & (~diff_exp_mag(expWidth-1,4).orR), 0.U(mntWidth+2)) >> diff_exp_mag(3:0)
+  val shifted_b_mnts_2pw = Cat(b_mnts & (~(diff_exp_mag(expWidth-1,4).orR)), 0.U((mntWidth+2).W)) >> diff_exp_mag(3, 0)
   val shifted_b_mnts = shifted_b_mnts_2pw(2*(mntWidth+1)-1, mntWidth+1)
   //--------------------------------------------------------------------------
   // 3. Performing Addition/Subtraction
   //--------------------------------------------------------------------------
   val Sum1 = a_mnts.zext + shifted_b_mnts.zext
-  val CarrySignBit = Sum1(mntWidth+1);
+  val CarrySignBit = Sum1(mntWidth+1)
 
-  val flag_zero2 = (Sum1 === 0.U)
+  val flag_zero2 = (Sum1 === 0.S)
 
   //--------------------------------------------------------------------------
   // 4. Normalizing
   //--------------------------------------------------------------------------
   val Norm_Sum = Mux(CarrySignBit,Sum1(mntWidth+1,1),Sum1(mntWidth,0))
-  val o_exp2 = Mux(CarrySignBit, o_exp1 + 1, o_exp1)
-  val flag_inf2 = o_exp_add >= ((scala.math.pow(2, expWidth).toInt-1).U).zext
+  val o_exp2 = Mux(CarrySignBit, o_exp1 + 1.U, o_exp1)
+  val flag_inf2 = o_exp2 >= Cat(0.U(1.W),(scala.math.pow(2, expWidth).toInt-1).U)
   //--------------------------------------------------------------------------
   // 5. Exception handling
   //--------------------------------------------------------------------------
@@ -92,5 +92,9 @@ class unsignedfpadder(expWidth: Int, mntWidth: Int) extends Module
     o_exp3 := (scala.math.pow(2, expWidth).toInt-1).U
     o_mnt := 5.U(mntWidth.W)
   }
-  io.c := Cat(0.U(1.W)&~flag_nan, o_exp3, o_mnt)
+  io.c := Cat(0.U(1.W)&(~flag_nan), o_exp3, o_mnt)
 }
+//import chisel3.stage.ChiselStage
+//object VerilogMain extends App {
+//  (new ChiselStage).emitVerilog(new unsignedfpadder(8, 7))
+//}
