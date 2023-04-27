@@ -4,7 +4,7 @@ package unsignedfpadder
 import chisel3._
 import chisel3.util._
 
-class fullfpadder(expWidth: Int, mntWidth: Int) extends Module
+class fullFPadder(expWidth: Int, mntWidth: Int) extends Module
 {
   val io = IO(new Bundle {
     val a = Input(UInt((expWidth + mntWidth + 1).W))
@@ -127,9 +127,9 @@ class fullfpadder(expWidth: Int, mntWidth: Int) extends Module
   // rounding unit
   val G1 = shifted_b_mnts_2pw(p - 1)
   val R1 = shifted_b_mnts_2pw(p - 2)
-  val S1 = shifted_b_mnts_2pw(p - 3, 0).orReduce || (diffExpMag(expWidth - 1, 5).orR && !Azero && !Bzero)
+  val S1 = shifted_b_mnts_2pw(p - 3, 0).orR || (diff_exp_mag(expWidth - 1, 5).orR && !Azero && !Bzero)
   // 2. COMPLEMENTING A IF IT IS SUBTRACTION
-  val complemented_a_mnts = aMnts ^ Fill(p, Op_perf)
+  val complemented_a_mnts = a_mnts ^ Fill(p, Op_perf)
   // 3. PERFORM ADDITION OR SUBTRACTION
   // wire [p-1+1:-3] Sum1 = 	{Op_perf, complemented_a_mnts, {3{Op_perf}}} + {shifted_b_mnts, G1, R1, S1} + Op_perf;
   // total bits p+4
@@ -139,29 +139,29 @@ class fullfpadder(expWidth: Int, mntWidth: Int) extends Module
   // get the most significant bit of sum1, it is carry when addition and Sign when subtraction
   val carrySignBit = sum1.head(1)
 
-  flag_zero1 = (sum1 === 0.U)
+  flag_zero1 := (sum1 === 0.U)
   // 4. NORMALIZING
   // if it is addition, we need to shift the result right by 1 if there is carry 
-  val norm_sum_add = Mux(carrySignBit, sum1.head(p+2) ## (sum1(1)|sum1(0)), sum1(p+2, 0))
+  val norm_sum_add = Mux(carrySignBit.asBool(), sum1.head(p+2) ## (sum1(1)|sum1(0)), sum1(p+2, 0))
   // adjusting exponent 
-  val o_exp_add = Mux(carrySignBit, o_exp1 + 1.U, o_exp1)
+  o_exp_add := Mux(carrySignBit.asBool(), o_exp1 + 1.U, o_exp1)
   // if it is infinite after adjusting the number
-  flag_inf1 := (o_exp_add >= MAXEXP.U) && !Op_perf
+  flag_inf1 := (o_exp_add >= MAXEXP) && !Op_perf
   // if it is subtraction, we need to shift various bits depend on leading zero poistion
   // if it is negative, get magnitude of sum1
-  val mag_sum1 = Mux(carrySignBit, (~sum1).asUInt() + 1.U, sum1)
+  val mag_sum1 = Mux(carrySignBit.asBool(), (~sum1).asUInt() + 1.U, sum1)
   // leadingzero counters
   val nzeros = countLeadingZeros(mag_sum1)
   // barrel shifter
   val norm_sum_sub = mag_sum1(p+2, 0) << nzeros
   // adjust exponent
-  val o_exp_sub = o_exp1 - nzeros
+  o_exp_sub := o_exp1 - nzeros
   // if it is less than zero, the output is zero
-  flag_zero2 := (o_exp_sub <= 0.U) && Op_perf
+  flag_zero2 := (o_exp_sub <= 0.S) && Op_perf
   // epilogue of normalizing
   // p+3 bits
   val norm_sum = Mux(Op_perf, norm_sum_sub, norm_sum_add)
-  val o_exp3 = Mux(Op_perf, o_exp_sub, o_exp_add)
+  o_exp3 := Mux(Op_perf, o_exp_sub, o_exp_add)
   // 5. Rounding
   // why we need guard bit?
   // https://pages.cs.wisc.edu/~david/courses/cs552/S12/handouts/guardbits.pdf
@@ -179,13 +179,13 @@ class fullfpadder(expWidth: Int, mntWidth: Int) extends Module
   val RS = norm_sum(0) | norm_sum(1)
   val rounding = io.round
   val RB = Wire(0.U(1.W))
-  when(rounding == 0.U) {
+  when(rounding === 0.U) {
     // to nearest
     RB := G & (M_LSB|RS)
-  }.elsewhen(rounding == 1.U){
+  }.elsewhen(rounding === 1.U){
     // towards zero
     RB := 0.U
-  }.elsewhen(rounding == 2.U){
+  }.elsewhen(rounding === 2.U){
     // towards postive inf
     RB := (G|RS) & (~o_sgn)
   }.otherwise{
@@ -200,18 +200,18 @@ class fullfpadder(expWidth: Int, mntWidth: Int) extends Module
   // total bit are p
   val normalized_norm_sum_rounding = Mux(carryFromNSM, norm_sum_rounding.head(p), norm_sum_rounding(p-1,0))
   o_exp3 := o_exp2 + carryFromNSM
-  flag_inf2 := (o_exp3 == MAXEXP) & ~flag_zero2
+  flag_inf2 := (o_exp3 === MAXEXP) & ~flag_zero2
 
   val cond = flag_nan ## flag_inf ## flag_zero
   val o_mnt = Wire(0.U(p.W))
   val o_exp4 = Wire(0.U(expWidth.W))
-  when(cond == 0.U){
+  when(cond === 0.U){
     o_mnt := normalized_norm_sum_rounding
     o_exp4 := o_exp3
-  }.elsewhen(cond == 1.U){
+  }.elsewhen(cond === 1.U){
     o_mnt := 0.U(p.W)
     o_exp4 := 0.U(expWidth.W)
-  }.elsewhen(cond == 2.U){
+  }.elsewhen(cond === 2.U){
     o_mnt := 0.U(p.W)
     o_exp4 := MAXEXP
   }.elsewhen(cond >= 4.U){

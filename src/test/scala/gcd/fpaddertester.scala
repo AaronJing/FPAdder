@@ -21,10 +21,10 @@ import org.scalatest._
   * }}}
   */
 class fullFPAdderSpec extends FlatSpec with ChiselScalatestTester {
-  behavior of "fullFPAdder"
+  behavior of "fullFPadder"
 
   it should "correctly process inputs and produce outputs" in {
-    test(new fullFPAdder(8,23)) { c =>
+    test(new fullFPadder(8,23)) { c =>
       val testCases = Seq(
         (1.0f, 2.0f),
         (-1.0f, 1.0f),
@@ -33,18 +33,17 @@ class fullFPAdderSpec extends FlatSpec with ChiselScalatestTester {
       )
 
       for ((a, b) <- testCases) {
-        val aUInt = Float.floatToIntBits(a).U
-        val bUInt = Float.floatToIntBits(b).U
+        
+        val aUInt = java.lang.Float.floatToIntBits(a).U
+        val bUInt = java.lang.Float.floatToIntBits(b).U
 
         c.io.a.poke(aUInt)
         c.io.b.poke(bUInt)
         c.io.op.poke(false.B)
         c.io.round.poke(0.U)
 
-        c.clock.step()
-
         val resultUInt = c.io.o.peek().litValue().toInt
-        val result = Float.intBitsToFloat(resultUInt)
+        val result = java.lang.Float.intBitsToFloat(resultUInt)
 
         println(s"a: $a, b: $b, o: $result")
 
