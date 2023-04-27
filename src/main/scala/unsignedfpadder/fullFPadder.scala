@@ -17,7 +17,7 @@ class fullfpadder(expWidth: Int, mntWidth: Int) extends Module
   val total_width = expWidth+mntWidth+1
   val p = mntWidth + 1
   val bias = (1 << (expWidth - 1)) - 1
-  val MAXEXP = (1 << expWidth) - 1
+  val MAXEXP = ((1 << expWidth) - 1).U
   // extract sign
   val a_sgn = io.a(total_width - 1)
   val b_sgn = io.b(total_width - 1)
@@ -65,6 +65,10 @@ class fullfpadder(expWidth: Int, mntWidth: Int) extends Module
   val flag_zero2 = Wire(Bool())
   val flag_nan = flag_nan0
   val flag_inf = Wire(Bool())
+  val flag_inf1 = Wire(Bool())
+  val flag_inf2 = Wire(Bool())
+
+  val o_sgn = Wire(Bool())
 
   val flag_zero = flag_zero0 | flag_zero1 | flag_zero2
   flag_inf := flag_inf0 | flag_inf1 | flag_inf2
@@ -142,7 +146,7 @@ class fullfpadder(expWidth: Int, mntWidth: Int) extends Module
   // adjusting exponent 
   val o_exp_add = Mux(carrySignBit, o_exp1 + 1.U, o_exp1)
   // if it is infinite after adjusting the number
-  val flag_inf1 = (o_exp_add >= MAXEXP.U) && !Op_perf
+  flag_inf1 := (o_exp_add >= MAXEXP.U) && !Op_perf
   // if it is subtraction, we need to shift various bits depend on leading zero poistion
   // if it is negative, get magnitude of sum1
   val mag_sum1 = Mux(carrySignBit, (~sum1).asUInt() + 1.U, sum1)
@@ -153,23 +157,72 @@ class fullfpadder(expWidth: Int, mntWidth: Int) extends Module
   // adjust exponent
   val o_exp_sub = o_exp1 - nzeros
   // if it is less than zero, the output is zero
-  val flag_zero2 = (o_exp_sub <= 0.U) && Op_perf
+  flag_zero2 := (o_exp_sub <= 0.U) && Op_perf
   // epilogue of normalizing
   // p+3 bits
   val norm_sum = Mux(Op_perf, norm_sum_sub, norm_sum_add)
   val o_exp3 = Mux(Op_perf, o_exp_sub, o_exp_add)
   // 5. Rounding
+  // why we need guard bit?
+  // https://pages.cs.wisc.edu/~david/courses/cs552/S12/handouts/guardbits.pdf
   // rounding: Different Modes
   // round==0 : Round to nearest
   // round==1 : towards zero a.k.a truncation
   // round==2 : towards positive infinity
   // round==3 : towards negative infinity
   // hidden1 mnt GRS == p+3 bits
-  val m0 = norm_sum(3)
+  val M_LSB = norm_sum(3)
   // Hassaan's implementation
-  val R = norm_sum(2)
-  val S = norm_sum(0) | norm_sum(1)
+  // Guard bit
+  val G = norm_sum(2)
+  // round OR sticky to be used in RB
+  val RS = norm_sum(0) | norm_sum(1)
+  val rounding = io.round
+  val RB = Wire(0.U(1.W))
+  when(rounding == 0.U) {
+    // to nearest
+    RB := G & (M_LSB|RS)
+  }.elsewhen(rounding == 1.U){
+    // towards zero
+    RB := 0.U
+  }.elsewhen(rounding == 2.U){
+    // towards postive inf
+    RB := (G|RS) & (~o_sgn)
+  }.otherwise{
+    // towards neg inf
+    RB := (G|RS) & o_sgn
+  }
+  // add rounding bit
+  // total bits are p+1
+  val norm_sum_rounding = norm_sum(p+2,3) +& RB
+  // get carry from rounding
+  val carryFromNSM = norm_sum_rounding(p)
+  // total bit are p
+  val normalized_norm_sum_rounding = Mux(carryFromNSM, norm_sum_rounding.head(p), norm_sum_rounding(p-1,0))
+  o_exp3 := o_exp2 + carryFromNSM
+  flag_inf2 := (o_exp3 == MAXEXP) & ~flag_zero2
 
+  val cond = flag_nan ## flag_inf ## flag_zero
+  val o_mnt = Wire(0.U(p.W))
+  val o_exp4 = Wire(0.U(expWidth.W))
+  when(cond == 0.U){
+    o_mnt := normalized_norm_sum_rounding
+    o_exp4 := o_exp3
+  }.elsewhen(cond == 1.U){
+    o_mnt := 0.U(p.W)
+    o_exp4 := 0.U(expWidth.W)
+  }.elsewhen(cond == 2.U){
+    o_mnt := 0.U(p.W)
+    o_exp4 := MAXEXP
+  }.elsewhen(cond >= 4.U){
+    o_mnt := 3.U(2.W) ## 0.U((p-2).W)
+    o_exp4 := MAXEXP
+  }.otherwise{
+    o_mnt := Fill(p, 1.U)
+    o_exp4 := MAXEXP
+  }
 
+  o_sgn := (Op_perf & (alb_exp ^ (~carrySignBit) ^ a_sgn) & (~flag_zero1)) | (~Op_perf & a_sgn)
+  io.o := (o_sgn & (~flag_nan) & (~flag_zero)) ## o_exp4 ## o_mnt(p-2,0)
 }
 
