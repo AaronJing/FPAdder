@@ -99,7 +99,7 @@ assign Inzero = Azero & Bzero;
 
 assign Ainf = & a_exp;
 assign Binf = & b_exp;
-assign IninfN= Ainf & Binf;          // will be high for both Nan or Inf
+assign IninfN= Ainf & Binf;          // will be high for both Nan or Inf        
 assign IninfO= Ainf | Binf;          // will be high for both Nan or Inf
 
 
