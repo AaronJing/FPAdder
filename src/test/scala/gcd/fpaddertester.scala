@@ -4,51 +4,34 @@ package unsignedfpadder
 
 import chisel3._
 import chiseltest._
+import scala.math._
 import org.scalatest.freespec.AnyFreeSpec
 import chisel3.experimental.BundleLiterals._
-import chisel3._
-import chisel3.tester._
-import org.scalatest._
-/**
-  * This is a trivial example of how to run this Specification
-  * From within sbt use:
-  * {{{
-  * testOnly gcd.GcdDecoupledTester
-  * }}}
-  * From a terminal shell use:
-  * {{{
-  * sbt 'testOnly gcd.GcdDecoupledTester'
-  * }}}
-  */
-class fullFPAdderSpec extends FlatSpec with ChiselScalatestTester {
-  behavior of "fullFPadder"
+import scala.io.Source
 
-  it should "correctly process inputs and produce outputs" in {
-    test(new fullFPadder(8,23)) { c =>
-      val testCases = Seq(
-        (1.0f, 2.0f),
-        (-1.0f, 1.0f),
-        (0.5f, 0.25f),
-        (-0.5f, -0.25f)
-      )
-
-      for ((a, b) <- testCases) {
-        
-        val aUInt = java.lang.Float.floatToIntBits(a).U
-        val bUInt = java.lang.Float.floatToIntBits(b).U
-
-        c.io.a.poke(aUInt)
-        c.io.b.poke(bUInt)
-        c.io.op.poke(false.B)
-        c.io.round.poke(0.U)
-
-        val resultUInt = c.io.o.peek().litValue().toInt
-        val result = java.lang.Float.intBitsToFloat(resultUInt)
-
-        println(s"a: $a, b: $b, o: $result")
-
-        assert(math.abs(result - (a + b)) < 1e-6)
+class unsignedfpadder16 extends AnyFreeSpec with ChiselScalatestTester {
+  val expwidth = 8
+  val sigwidth = 23
+    /*
+     *  test1 = inputa inputb inputc
+     *  test2 ...
+     *  test3 ...
+     *  test_all = test1 test2 test3
+     * */ 
+  val filename = "/home/jing/UnsignedFPadder/saved_test"
+  var counter = 0
+  for (line <- Source.fromFile(filename).getLines) {
+    val test_array = line.split(" ")
+    "random test: " + line + counter in {
+      test(new fullFPadder(8, 23)) { dut =>
+        dut.io.a.poke(test_array(0).U)
+        dut.io.b.poke(test_array(1).U)
+        dut.io.op.poke(0.U)
+        dut.io.round.poke(1.U(2.W))
+        dut.io.o.expect(test_array(2).U)
       }
     }
+    counter = counter + 1
   }
 }
+

@@ -12,6 +12,7 @@ class fullFPadder(expWidth: Int, mntWidth: Int) extends Module
     val o = Output(UInt((expWidth + mntWidth + 1).W))
     val op = Input(Bool())
     val round = Input(UInt(2.W))
+    // add debugging signals here are use peek
   })
 
   val total_width = expWidth+mntWidth+1
@@ -89,9 +90,6 @@ class fullFPadder(expWidth: Int, mntWidth: Int) extends Module
 
   // *** unchecked start ***
   val o_exp_add = Wire(UInt(expWidth.W))
-  val o_exp_sub = Wire(SInt((expWidth + 1).W))
-  val o_exp2 = Wire(UInt(expWidth.W))
-  val o_exp3 = Wire(UInt(expWidth.W))
   // *** unchecked end ***
   //https://pages.cs.wisc.edu/~markhill/cs354/Fall2008/notes/flpt.apprec.html
   //    1.XXXXXXXXXXXXXXXXXXXXXXX   0   0   0
@@ -155,13 +153,14 @@ class fullFPadder(expWidth: Int, mntWidth: Int) extends Module
   // barrel shifter
   val norm_sum_sub = mag_sum1(p+2, 0) << nzeros
   // adjust exponent
-  o_exp_sub := o_exp1 - nzeros
+  val o_exp_sub = o_exp1.zext - nzeros.zext
   // if it is less than zero, the output is zero
   flag_zero2 := (o_exp_sub <= 0.S) && Op_perf
   // epilogue of normalizing
   // p+3 bits
   val norm_sum = Mux(Op_perf, norm_sum_sub, norm_sum_add)
-  o_exp3 := Mux(Op_perf, o_exp_sub, o_exp_add)
+  val o_exp2 = Mux(Op_perf, o_exp_sub.asUInt(), o_exp_add)
+
   // 5. Rounding
   // why we need guard bit?
   // https://pages.cs.wisc.edu/~david/courses/cs552/S12/handouts/guardbits.pdf
@@ -178,7 +177,7 @@ class fullFPadder(expWidth: Int, mntWidth: Int) extends Module
   // round OR sticky to be used in RB
   val RS = norm_sum(0) | norm_sum(1)
   val rounding = io.round
-  val RB = Wire(0.U(1.W))
+  val RB = Wire(UInt())
   when(rounding === 0.U) {
     // to nearest
     RB := G & (M_LSB|RS)
@@ -199,12 +198,12 @@ class fullFPadder(expWidth: Int, mntWidth: Int) extends Module
   val carryFromNSM = norm_sum_rounding(p)
   // total bit are p
   val normalized_norm_sum_rounding = Mux(carryFromNSM, norm_sum_rounding.head(p), norm_sum_rounding(p-1,0))
-  o_exp3 := o_exp2 + carryFromNSM
+  val o_exp3 = o_exp2 + carryFromNSM
   flag_inf2 := (o_exp3 === MAXEXP) & ~flag_zero2
 
   val cond = flag_nan ## flag_inf ## flag_zero
-  val o_mnt = Wire(0.U(p.W))
-  val o_exp4 = Wire(0.U(expWidth.W))
+  val o_mnt = Wire(UInt(p.W))
+  val o_exp4 = Wire(UInt(expWidth.W))
   when(cond === 0.U){
     o_mnt := normalized_norm_sum_rounding
     o_exp4 := o_exp3
