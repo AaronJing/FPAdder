@@ -4,7 +4,7 @@ package unsignedfpadder
 import chisel3._
 import chisel3.util._
 
-class fullFPadder(expWidth: Int, mntWidth: Int, no_round: Bool, unsignedfpadder: Bool) extends Module
+class fullFPadder(expWidth: Int, mntWidth: Int, no_round: Boolean, unsignedfpadder: Boolean) extends Module
 {
   val io = IO(new Bundle {
     val a = Input(UInt((expWidth + mntWidth + 1).W))
@@ -231,7 +231,7 @@ class fullFPadder(expWidth: Int, mntWidth: Int, no_round: Bool, unsignedfpadder:
   }
 
   o_sgn := (Op_perf & (alb_exp ^ (~carrySignBit) ^ a_sgn) & (~flag_zero1)) | (~Op_perf & a_sgn)
-  io.o := (o_sgn & (~flag_nan) & (~flag_zero)) ## o_exp4 ## o_mnt(p-2,0)
+  io.o := (o_sgn ) ## o_exp4 ## o_mnt(p-2,0)
   // io.o_exp1_debug := o_exp1
   // io.o_exp2_debug := o_exp2
   // io.shifted_b_mnts_debug := shifted_b_mnts

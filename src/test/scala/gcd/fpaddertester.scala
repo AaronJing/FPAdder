@@ -23,7 +23,7 @@ class unsignedfpadder16 extends AnyFreeSpec with ChiselScalatestTester {
   for (line <- Source.fromFile(filename).getLines) {
     val test_array = line.split(" ")
     "random test: " + line + counter in {
-      test(new fullFPadder(8, 23)) { dut =>
+      test(new fullFPadder(8, 23, false, false)) { dut =>
         dut.io.a.poke(test_array(0).U)
         dut.io.b.poke(test_array(1).U)
         dut.io.op.poke(0.U)
