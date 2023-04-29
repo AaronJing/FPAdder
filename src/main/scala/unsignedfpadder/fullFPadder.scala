@@ -4,7 +4,7 @@ package unsignedfpadder
 import chisel3._
 import chisel3.util._
 
-class fullFPadder(expWidth: Int, mntWidth: Int) extends Module
+class fullFPadder(expWidth: Int, mntWidth: Int, no_round: Bool, unsignedfpadder: Bool) extends Module
 {
   val io = IO(new Bundle {
     val a = Input(UInt((expWidth + mntWidth + 1).W))
@@ -12,6 +12,14 @@ class fullFPadder(expWidth: Int, mntWidth: Int) extends Module
     val o = Output(UInt((expWidth + mntWidth + 1).W))
     val op = Input(Bool())
     val round = Input(UInt(2.W))
+    // val o_exp1_debug = Output(UInt(expWidth.W))
+    // val o_exp2_debug = Output(UInt(expWidth.W))
+    // val shifted_b_mnts_debug = Output(UInt((mntWidth+1).W))
+    // val complemented_a_mnts_debug = Output(UInt((mntWidth+1).W))
+    // val sum1_debug = Output(UInt((mntWidth+5).W))
+    // val b_mnts_debug = Output(UInt((mntWidth+1).W))
+    // val mag_sum1_debug = Output(UInt((mntWidth+5).W))
+    // val carrySignBit_debug = Output(UInt(1.W))
     // add debugging signals here are use peek
   })
 
@@ -26,8 +34,8 @@ class fullFPadder(expWidth: Int, mntWidth: Int) extends Module
   val a_exp = io.a(total_width - 2, mntWidth)
   val b_exp = io.b(total_width - 2, mntWidth)
   // append hidden bits
-  val a_mnt = (1.U(1.W) ## io.a)
-  val b_mnt = (1.U(1.W) ## io.b) 
+  val a_mnt = (1.U(1.W) ## io.a(mntWidth-1,0))
+  val b_mnt = (1.U(1.W) ## io.b(mntWidth-1,0)) 
   // if op is subtract or add
   val Op_perf = a_sgn ^ b_sgn ^ io.op
   // I follow the special case listed here
@@ -121,11 +129,11 @@ class fullFPadder(expWidth: Int, mntWidth: Int) extends Module
   //                                    1.XXXXXXXXXXXXXXXXXXXXXXX   0   0   0
   val shifted_b_mnts_2pw = (b_mnts ## 0.U((p+1).W)) >> diff_exp_mag
   // bitwidth = p 
-  val shifted_b_mnts = shifted_b_mnts_2pw(2 * p - 1, p)
+  val shifted_b_mnts = shifted_b_mnts_2pw(2 * p, p+1)
   // rounding unit
-  val G1 = shifted_b_mnts_2pw(p - 1)
-  val R1 = shifted_b_mnts_2pw(p - 2)
-  val S1 = shifted_b_mnts_2pw(p - 3, 0).orR || (diff_exp_mag(expWidth - 1, 5).orR && !Azero && !Bzero)
+  val G1 = shifted_b_mnts_2pw(p)
+  val R1 = shifted_b_mnts_2pw(p - 1)
+  val S1 = shifted_b_mnts_2pw(p - 2, 0).orR || (diff_exp_mag(expWidth - 1, 5).orR && !Azero && !Bzero)
   // 2. COMPLEMENTING A IF IT IS SUBTRACTION
   val complemented_a_mnts = a_mnts ^ Fill(p, Op_perf)
   // 3. PERFORM ADDITION OR SUBTRACTION
@@ -133,23 +141,23 @@ class fullFPadder(expWidth: Int, mntWidth: Int) extends Module
   // total bits p+4
   // carry bit + (hidden and mnts) + GRS bits
   // the last Op_perf is from two's complementing
-  val sum1 = Cat(Op_perf, complemented_a_mnts, Fill(3, Op_perf)) + Cat(shifted_b_mnts, G1, R1, S1) + Op_perf
+  val sum1 = Cat(Op_perf, complemented_a_mnts, Fill(3, Op_perf)) +& Cat(shifted_b_mnts, G1, R1, S1) + Op_perf
   // get the most significant bit of sum1, it is carry when addition and Sign when subtraction
-  val carrySignBit = sum1.head(1)
+  val carrySignBit = sum1(p+3)
 
   flag_zero1 := (sum1 === 0.U)
   // 4. NORMALIZING
   // if it is addition, we need to shift the result right by 1 if there is carry 
-  val norm_sum_add = Mux(carrySignBit.asBool(), sum1.head(p+2) ## (sum1(1)|sum1(0)), sum1(p+2, 0))
+  val norm_sum_add = Mux(carrySignBit.asBool(), sum1(p+3,2) ## (sum1(1)|sum1(0)), sum1(p+2, 0))
   // adjusting exponent 
   o_exp_add := Mux(carrySignBit.asBool(), o_exp1 + 1.U, o_exp1)
   // if it is infinite after adjusting the number
   flag_inf1 := (o_exp_add >= MAXEXP) && !Op_perf
   // if it is subtraction, we need to shift various bits depend on leading zero poistion
   // if it is negative, get magnitude of sum1
-  val mag_sum1 = Mux(carrySignBit.asBool(), (~sum1).asUInt() + 1.U, sum1)
+  val mag_sum1 = Mux(carrySignBit.asBool(), ~(sum1).asUInt() + 1.U, sum1)
   // leadingzero counters
-  val nzeros = countLeadingZeros(mag_sum1)
+  val nzeros = countLeadingZeros(mag_sum1(p+2,0))
   // barrel shifter
   val norm_sum_sub = mag_sum1(p+2, 0) << nzeros
   // adjust exponent
@@ -159,6 +167,7 @@ class fullFPadder(expWidth: Int, mntWidth: Int) extends Module
   // epilogue of normalizing
   // p+3 bits
   val norm_sum = Mux(Op_perf, norm_sum_sub, norm_sum_add)
+
   val o_exp2 = Mux(Op_perf, o_exp_sub.asUInt(), o_exp_add)
 
   // 5. Rounding
@@ -223,5 +232,13 @@ class fullFPadder(expWidth: Int, mntWidth: Int) extends Module
 
   o_sgn := (Op_perf & (alb_exp ^ (~carrySignBit) ^ a_sgn) & (~flag_zero1)) | (~Op_perf & a_sgn)
   io.o := (o_sgn & (~flag_nan) & (~flag_zero)) ## o_exp4 ## o_mnt(p-2,0)
+  // io.o_exp1_debug := o_exp1
+  // io.o_exp2_debug := o_exp2
+  // io.shifted_b_mnts_debug := shifted_b_mnts
+  // io.complemented_a_mnts_debug := complemented_a_mnts
+  // io.sum1_debug := sum1
+  // io.b_mnts_debug := b_mnts
+  // io.mag_sum1_debug := mag_sum1
+  // io.carrySignBit_debug := carrySignBit
 }
 

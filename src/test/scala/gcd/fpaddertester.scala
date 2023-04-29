@@ -29,6 +29,15 @@ class unsignedfpadder16 extends AnyFreeSpec with ChiselScalatestTester {
         dut.io.op.poke(0.U)
         dut.io.round.poke(1.U(2.W))
         dut.io.o.expect(test_array(2).U)
+        // print(dut.io.o_exp1_debug.peek())
+        // print(dut.io.o_exp2_debug.peek())
+        // print(dut.io.b_mnts_debug.peek())
+        // print(dut.io.shifted_b_mnts_debug.peek())
+        // print(dut.io.complemented_a_mnts_debug.peek())
+        // print(dut.io.sum1_debug.peek())
+        // print(dut.io.mag_sum1_debug.peek())
+        // print(dut.io.carrySignBit_debug.peek())
+        // print("\n")
       }
     }
     counter = counter + 1
