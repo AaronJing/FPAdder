@@ -4,40 +4,33 @@ package unsignedfpadder
 import chisel3._
 import chisel3.util._
 
-class fullFPadder(expWidth: Int, mntWidth: Int, no_round: Boolean, unsignedfpadder: Boolean) extends Module
+class fullFPadder(expWidth: Int, mntWidth: Int) extends Module with adder_intf
 {
-  val io = IO(new Bundle {
-    val a = Input(UInt((expWidth + mntWidth + 1).W))
-    val b = Input(UInt((expWidth + mntWidth + 1).W))
-    val o = Output(UInt((expWidth + mntWidth + 1).W))
-    val op = Input(Bool())
-    val round = Input(UInt(2.W))
-    // val o_exp1_debug = Output(UInt(expWidth.W))
-    // val o_exp2_debug = Output(UInt(expWidth.W))
-    // val shifted_b_mnts_debug = Output(UInt((mntWidth+1).W))
-    // val complemented_a_mnts_debug = Output(UInt((mntWidth+1).W))
-    // val sum1_debug = Output(UInt((mntWidth+5).W))
-    // val b_mnts_debug = Output(UInt((mntWidth+1).W))
-    // val mag_sum1_debug = Output(UInt((mntWidth+5).W))
-    // val carrySignBit_debug = Output(UInt(1.W))
-    // add debugging signals here are use peek
-  })
+  val ioa =           IO(Input(UInt((expWidth + mntWidth + 1).W)))
+  val iob =           IO(Input(UInt((expWidth + mntWidth + 1).W)))
+  val ioop =          IO(Input(Bool()))
+  val ioflag_inf2 =   IO(Input(Bool()))
+  val ioo_sgn =       IO(Output(UInt(1.W)))
+  val iocond =        IO(Output(UInt(3.W)))
+  val ioo_exp2 =      IO(Output(UInt(expWidth.W)))
+  val ionorm_sum =    IO(Output(UInt((mntWidth+4).W)))
+  val ioflag_zero2 =  IO(Output(Bool()))
 
   val total_width = expWidth+mntWidth+1
   val p = mntWidth + 1
   val bias = (1 << (expWidth - 1)) - 1
   val MAXEXP = ((1 << expWidth) - 1).U
   // extract sign
-  val a_sgn = io.a(total_width - 1)
-  val b_sgn = io.b(total_width - 1)
+  val a_sgn = ioa(total_width - 1)
+  val b_sgn = iob(total_width - 1)
   // extract exponent
-  val a_exp = io.a(total_width - 2, mntWidth)
-  val b_exp = io.b(total_width - 2, mntWidth)
+  val a_exp = ioa(total_width - 2, mntWidth)
+  val b_exp = iob(total_width - 2, mntWidth)
   // append hidden bits
-  val a_mnt = (1.U(1.W) ## io.a(mntWidth-1,0))
-  val b_mnt = (1.U(1.W) ## io.b(mntWidth-1,0)) 
+  val a_mnt = (1.U(1.W) ## ioa(mntWidth-1,0))
+  val b_mnt = (1.U(1.W) ## iob(mntWidth-1,0)) 
   // if op is subtract or add
-  val Op_perf = a_sgn ^ b_sgn ^ io.op
+  val Op_perf = a_sgn ^ b_sgn ^ ioop
   // I follow the special case listed here
   // http://steve.hollasch.net/cgindex/coding/ieeefloat.html
   // if mnt is all zero
@@ -75,9 +68,8 @@ class fullFPadder(expWidth: Int, mntWidth: Int, no_round: Boolean, unsignedfpadd
   val flag_nan = flag_nan0
   val flag_inf = Wire(Bool())
   val flag_inf1 = Wire(Bool())
-  val flag_inf2 = Wire(Bool())
+  val flag_inf2 = ioflag_inf2
 
-  val o_sgn = Wire(Bool())
 
   val flag_zero = flag_zero0 | flag_zero1 | flag_zero2
   flag_inf := flag_inf0 | flag_inf1 | flag_inf2
@@ -98,7 +90,7 @@ class fullFPadder(expWidth: Int, mntWidth: Int, no_round: Boolean, unsignedfpadd
 
   // *** unchecked start ***
   val o_exp_add = Wire(UInt(expWidth.W))
-  // *** unchecked end ***
+  // *** unchecked end   ***
   //https://pages.cs.wisc.edu/~markhill/cs354/Fall2008/notes/flpt.apprec.html
   //    1.XXXXXXXXXXXXXXXXXXXXXXX   0   0   0
   //    ^         ^                 ^   ^   ^
@@ -170,75 +162,15 @@ class fullFPadder(expWidth: Int, mntWidth: Int, no_round: Boolean, unsignedfpadd
 
   val o_exp2 = Mux(Op_perf, o_exp_sub.asUInt(), o_exp_add)
 
-  // 5. Rounding
-  // why we need guard bit?
-  // https://pages.cs.wisc.edu/~david/courses/cs552/S12/handouts/guardbits.pdf
-  // rounding: Different Modes
-  // round==0 : Round to nearest
-  // round==1 : towards zero a.k.a truncation
-  // round==2 : towards positive infinity
-  // round==3 : towards negative infinity
-  // hidden1 mnt GRS == p+3 bits
-  val M_LSB = norm_sum(3)
-  // Hassaan's implementation
-  // Guard bit
-  val G = norm_sum(2)
-  // round OR sticky to be used in RB
-  val RS = norm_sum(0) | norm_sum(1)
-  val rounding = io.round
-  val RB = Wire(UInt())
-  when(rounding === 0.U) {
-    // to nearest
-    RB := G & (M_LSB|RS)
-  }.elsewhen(rounding === 1.U){
-    // towards zero
-    RB := 0.U
-  }.elsewhen(rounding === 2.U){
-    // towards postive inf
-    RB := (G|RS) & (~o_sgn)
-  }.otherwise{
-    // towards neg inf
-    RB := (G|RS) & o_sgn
-  }
-  // add rounding bit
-  // total bits are p+1
-  val norm_sum_rounding = norm_sum(p+2,3) +& RB
-  // get carry from rounding
-  val carryFromNSM = norm_sum_rounding(p)
-  // total bit are p
-  val normalized_norm_sum_rounding = Mux(carryFromNSM, norm_sum_rounding.head(p), norm_sum_rounding(p-1,0))
-  val o_exp3 = o_exp2 + carryFromNSM
-  flag_inf2 := (o_exp3 === MAXEXP) & ~flag_zero2
+  val o_sgn = (Op_perf & (alb_exp ^ (~carrySignBit) ^ a_sgn) & (~flag_zero1)) | (~Op_perf & a_sgn)
+ 
 
-  val cond = flag_nan ## flag_inf ## flag_zero
-  val o_mnt = Wire(UInt(p.W))
-  val o_exp4 = Wire(UInt(expWidth.W))
-  when(cond === 0.U){
-    o_mnt := normalized_norm_sum_rounding
-    o_exp4 := o_exp3
-  }.elsewhen(cond === 1.U){
-    o_mnt := 0.U(p.W)
-    o_exp4 := 0.U(expWidth.W)
-  }.elsewhen(cond === 2.U){
-    o_mnt := 0.U(p.W)
-    o_exp4 := MAXEXP
-  }.elsewhen(cond >= 4.U){
-    o_mnt := 3.U(2.W) ## 0.U((p-2).W)
-    o_exp4 := MAXEXP
-  }.otherwise{
-    o_mnt := Fill(p, 1.U)
-    o_exp4 := MAXEXP
-  }
+  val cond = flag_nan ## flag_inf ## flag_zero 
+  ioflag_zero2 := flag_zero2
+  iocond := cond
+  ioo_sgn := o_sgn
+  ioo_exp2 := o_exp2
+  ionorm_sum := norm_sum
 
-  o_sgn := (Op_perf & (alb_exp ^ (~carrySignBit) ^ a_sgn) & (~flag_zero1)) | (~Op_perf & a_sgn)
-  io.o := (o_sgn ) ## o_exp4 ## o_mnt(p-2,0)
-  // io.o_exp1_debug := o_exp1
-  // io.o_exp2_debug := o_exp2
-  // io.shifted_b_mnts_debug := shifted_b_mnts
-  // io.complemented_a_mnts_debug := complemented_a_mnts
-  // io.sum1_debug := sum1
-  // io.b_mnts_debug := b_mnts
-  // io.mag_sum1_debug := mag_sum1
-  // io.carrySignBit_debug := carrySignBit
 }
 
