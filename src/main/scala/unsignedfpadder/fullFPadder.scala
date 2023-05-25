@@ -4,7 +4,7 @@ package unsignedfpadder
 import chisel3._
 import chisel3.util._
 
-class fullFPadder(expWidth: Int, mntWidth: Int, no_round_optimization: bool) extends Module with adder_intf
+class fullFPadder(expWidth: Int, mntWidth: Int, no_round_optimization: Boolean) extends Module with adder_intf
 {
   val ioa =           IO(Input(UInt((expWidth + mntWidth + 1).W)))
   val iob =           IO(Input(UInt((expWidth + mntWidth + 1).W)))

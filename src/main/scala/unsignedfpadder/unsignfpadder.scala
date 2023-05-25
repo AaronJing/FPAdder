@@ -4,7 +4,7 @@ package unsignedfpadder
 import chisel3._
 import chisel3.util._
 
-class unsignedFPadder(expWidth: Int, mntWidth: Int) extends Module with adder_intf
+class unsignedFPadder(expWidth: Int, mntWidth: Int, no_round_optimization: Boolean) extends Module with adder_intf
 {
 
 
