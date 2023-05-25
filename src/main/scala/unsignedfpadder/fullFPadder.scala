@@ -4,7 +4,7 @@ package unsignedfpadder
 import chisel3._
 import chisel3.util._
 
-class fullFPadder(expWidth: Int, mntWidth: Int) extends Module with adder_intf
+class fullFPadder(expWidth: Int, mntWidth: Int, no_round_optimization: bool) extends Module with adder_intf
 {
   val ioa =           IO(Input(UInt((expWidth + mntWidth + 1).W)))
   val iob =           IO(Input(UInt((expWidth + mntWidth + 1).W)))
@@ -105,72 +105,129 @@ class fullFPadder(expWidth: Int, mntWidth: Int) extends Module with adder_intf
   
   
   
-  // Hassaan's implementation
-  // total bitwidth = p + (p+1)
-  //val shifted_b_mnts_2pw = ((b_mnts & Fill(p, ~diff_exp_mag(expWidth-1, 5).orR)) ## 0.U((p+1).W)) >> diff_exp_mag(4,0)
+  
+  if (!no_round_optimization){
+    // Hassaan's implementation
+    // total bitwidth = p + (p+1)
+    //val shifted_b_mnts_2pw = ((b_mnts & Fill(p, ~diff_exp_mag(expWidth-1, 5).orR)) ## 0.U((p+1).W)) >> diff_exp_mag(4,0)
 
-  // my implementation 1, that hidden bit of shifted is at the sticky bit of unshifted
-  // total bitwidth = p + (p+1)
-  //    1.XXXXXXXXXXXXXXXXXXXXXXX   0   0   0
-  //                                        1.XXXXXXXXXXXXXXXXXXXXXXX   0   0   0
-  //val shifted_b_mnts_2pw = (b_mnts ## 0.U((p+2).W)) >> diff_exp_mag
+    // my implementation 1, that hidden bit of shifted is at the sticky bit of unshifted
+    // total bitwidth = p + (p+2)
+    //    1.XXXXXXXXXXXXXXXXXXXXXXX   0   0   0
+    //                                        1.XXXXXXXXXXXXXXXXXXXXXXX   0   0   0
+    //val shifted_b_mnts_2pw = (b_mnts ## 0.U((p+2).W)) >> diff_exp_mag
 
-  // my implementation 2, that hidden bit of shifted is at the round bit of unshifted
-  // total bitwidth = p + (p+2)
-  //    1.XXXXXXXXXXXXXXXXXXXXXXX   0   0   0
-  //                                    1.XXXXXXXXXXXXXXXXXXXXXXX   0   0   0
-  val shifted_b_mnts_2pw = (b_mnts ## 0.U((p+1).W)) >> diff_exp_mag
-  // bitwidth = p 
-  val shifted_b_mnts = shifted_b_mnts_2pw(2 * p, p+1)
-  // rounding unit
-  val G1 = shifted_b_mnts_2pw(p)
-  val R1 = shifted_b_mnts_2pw(p - 1)
-  val S1 = shifted_b_mnts_2pw(p - 2, 0).orR || (diff_exp_mag(expWidth - 1, 5).orR && !Azero && !Bzero)
-  // 2. COMPLEMENTING A IF IT IS SUBTRACTION
-  val complemented_a_mnts = a_mnts ^ Fill(p, Op_perf)
-  // 3. PERFORM ADDITION OR SUBTRACTION
-  // wire [p-1+1:-3] Sum1 = 	{Op_perf, complemented_a_mnts, {3{Op_perf}}} + {shifted_b_mnts, G1, R1, S1} + Op_perf;
-  // total bits p+4
-  // carry bit + (hidden and mnts) + GRS bits
-  // the last Op_perf is from two's complementing
-  val sum1 = Cat(Op_perf, complemented_a_mnts, Fill(3, Op_perf)) +& Cat(shifted_b_mnts, G1, R1, S1) + Op_perf
-  // get the most significant bit of sum1, it is carry when addition and Sign when subtraction
-  val carrySignBit = sum1(p+3)
+    // my implementation 2, that hidden bit of shifted is at the round bit of unshifted
+    // total bitwidth = p + (p+1)
+    //    1.XXXXXXXXXXXXXXXXXXXXXXX   0   0   0
+    //                                    1.XXXXXXXXXXXXXXXXXXXXXXX   0   0   0
+    val shifted_b_mnts_2pw = (b_mnts ## 0.U((p+1).W)) >> diff_exp_mag
+    // bitwidth = p 
+    val shifted_b_mnts = shifted_b_mnts_2pw(2 * p, p+1)
+    // rounding unit
+    val G1 = shifted_b_mnts_2pw(p)
+    val R1 = shifted_b_mnts_2pw(p - 1)
+      //val S1 = shifted_b_mnts_2pw(p - 2, 0).orR || (diff_exp_mag(expWidth - 1, 5).orR && !Azero && !Bzero)
+  
+    val S1 = shifted_b_mnts_2pw(p - 2, 0).orR ||(diff_exp_mag > ((mntWidth+1)*2+2).U)
+    // 2. COMPLEMENTING A IF IT IS SUBTRACTION
+    val complemented_a_mnts = a_mnts ^ Fill(p, Op_perf)
+    // 3. PERFORM ADDITION OR SUBTRACTION
+    // wire [p-1+1:-3] Sum1 = 	{Op_perf, complemented_a_mnts, {3{Op_perf}}} + {shifted_b_mnts, G1, R1, S1} + Op_perf;
+    // total bits p+4
+    // carry bit + (hidden and mnts) + GRS bits
+    // the last Op_perf is from two's complementing
+    val sum1 = Cat(Op_perf, complemented_a_mnts, Fill(3, Op_perf)) +& Cat(shifted_b_mnts, G1, R1, S1) + Op_perf
+    // get the most significant bit of sum1, it is carry when addition and Sign when subtraction
+    val carrySignBit = sum1(p+3)
+  
+    flag_zero1 := (sum1 === 0.U)
+    // 4. NORMALIZING
+    // if it is addition, we need to shift the result right by 1 if there is carry 
+    val norm_sum_add = Mux(carrySignBit.asBool(), sum1(p+3,2) ## (sum1(1)|sum1(0)), sum1(p+2, 0))
+    // adjusting exponent 
+    o_exp_add := Mux(carrySignBit.asBool(), o_exp1 + 1.U, o_exp1)
+    // if it is infinite after adjusting the number
+    flag_inf1 := (o_exp_add >= MAXEXP) && !Op_perf
+    // if it is subtraction, we need to shift various bits depend on leading zero poistion
+    // if it is negative, get magnitude of sum1
+    val mag_sum1 = Mux(carrySignBit.asBool(), ~(sum1).asUInt() + 1.U, sum1)
+    // leadingzero counters
+    val nzeros = countLeadingZeros(mag_sum1(p+2,0))
+    // barrel shifter
+    val norm_sum_sub = mag_sum1(p+2, 0) << nzeros
+    // adjust exponent
+    val o_exp_sub = o_exp1.zext - nzeros.zext
+    // if it is less than zero, the output is zero
+    flag_zero2 := (o_exp_sub <= 0.S) && Op_perf
+    // epilogue of normalizing
+    // p+3 bits
+    val norm_sum = Mux(Op_perf, norm_sum_sub, norm_sum_add)
+  
+    val o_exp2 = Mux(Op_perf, o_exp_sub.asUInt(), o_exp_add)
+  
+    val o_sgn = (Op_perf & (alb_exp ^ (~carrySignBit) ^ a_sgn) & (~flag_zero1)) | (~Op_perf & a_sgn)
+  
+  
+    val cond = flag_nan ## flag_inf ## flag_zero 
+    ioflag_zero2 := flag_zero2
+    iocond := cond
+    ioo_sgn := o_sgn
+    ioo_exp2 := o_exp2
+    ionorm_sum := norm_sum
+  } else {
 
-  flag_zero1 := (sum1 === 0.U)
-  // 4. NORMALIZING
-  // if it is addition, we need to shift the result right by 1 if there is carry 
-  val norm_sum_add = Mux(carrySignBit.asBool(), sum1(p+3,2) ## (sum1(1)|sum1(0)), sum1(p+2, 0))
-  // adjusting exponent 
-  o_exp_add := Mux(carrySignBit.asBool(), o_exp1 + 1.U, o_exp1)
-  // if it is infinite after adjusting the number
-  flag_inf1 := (o_exp_add >= MAXEXP) && !Op_perf
-  // if it is subtraction, we need to shift various bits depend on leading zero poistion
-  // if it is negative, get magnitude of sum1
-  val mag_sum1 = Mux(carrySignBit.asBool(), ~(sum1).asUInt() + 1.U, sum1)
-  // leadingzero counters
-  val nzeros = countLeadingZeros(mag_sum1(p+2,0))
-  // barrel shifter
-  val norm_sum_sub = mag_sum1(p+2, 0) << nzeros
-  // adjust exponent
-  val o_exp_sub = o_exp1.zext - nzeros.zext
-  // if it is less than zero, the output is zero
-  flag_zero2 := (o_exp_sub <= 0.S) && Op_perf
-  // epilogue of normalizing
-  // p+3 bits
-  val norm_sum = Mux(Op_perf, norm_sum_sub, norm_sum_add)
+    // bitwidth = p 
+    val shifted_b_mnts = b_mnts >> diff_exp_mag
 
-  val o_exp2 = Mux(Op_perf, o_exp_sub.asUInt(), o_exp_add)
+    // 2. COMPLEMENTING A IF IT IS SUBTRACTION
+    val complemented_a_mnts = a_mnts ^ Fill(p, Op_perf)
+    // 3. PERFORM ADDITION OR SUBTRACTION
 
-  val o_sgn = (Op_perf & (alb_exp ^ (~carrySignBit) ^ a_sgn) & (~flag_zero1)) | (~Op_perf & a_sgn)
- 
+    // total bits p+1
+    // carry bit + (hidden and mnts) 
+    // the last Op_perf is from two's complementing
+    val sum1 = Cat(Op_perf, complemented_a_mnts) +& shifted_b_mnts + Op_perf
+    // get the most significant bit of sum1, it is carry when addition and Sign when subtraction
+    val carrySignBit = sum1(p)
+  
+    flag_zero1 := (sum1 === 0.U)
+    // 4. NORMALIZING
+    // if it is addition, we need to shift the result right by 1 if there is carry 
+    val norm_sum_add = Mux(carrySignBit.asBool(), sum1(p, 1), sum1(p-1, 0))
+    // adjusting exponent 
+    o_exp_add := Mux(carrySignBit.asBool(), o_exp1 + 1.U, o_exp1)
+    // if it is infinite after adjusting the number
+    flag_inf1 := (o_exp_add >= MAXEXP) && !Op_perf
+    // if it is subtraction, we need to shift various bits depend on leading zero poistion
+    // if it is negative, get magnitude of sum1
+    val mag_sum1 = Mux(carrySignBit.asBool(), ~(sum1).asUInt() + 1.U, sum1)
+    // leadingzero counters
+    val nzeros = countLeadingZeros(mag_sum1(p-1,0))
+    // barrel shifter
+    val norm_sum_sub = mag_sum1(p-1, 0) << nzeros
+    // adjust exponent
+    val o_exp_sub = o_exp1.zext - nzeros.zext
+    // if it is less than zero, the output is zero
+    flag_zero2 := (o_exp_sub <= 0.S) && Op_perf
+    // epilogue of normalizing
+    // p bits
+    val norm_sum = Mux(Op_perf, norm_sum_sub ## 0.U(3.W), norm_sum_add ## 0.U(3.W))
+  
+    val o_exp2 = Mux(Op_perf, o_exp_sub.asUInt(), o_exp_add)
+  
+    val o_sgn = (Op_perf & (alb_exp ^ (~carrySignBit) ^ a_sgn) & (~flag_zero1)) | (~Op_perf & a_sgn)
+  
+  
+    val cond = flag_nan ## flag_inf ## flag_zero 
+    ioflag_zero2 := flag_zero2
+    iocond := cond
+    ioo_sgn := o_sgn
+    ioo_exp2 := o_exp2
+    ionorm_sum := norm_sum
 
-  val cond = flag_nan ## flag_inf ## flag_zero 
-  ioflag_zero2 := flag_zero2
-  iocond := cond
-  ioo_sgn := o_sgn
-  ioo_exp2 := o_exp2
-  ionorm_sum := norm_sum
+  }
+
 
 }
 

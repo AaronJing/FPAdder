@@ -78,7 +78,7 @@ fp fpadder32_truncation_unsigned(fp &u1, fp &u2){
     } else {
         u1.get_float() = -u1.get_float();
         u2.get_float() = -u2.get_float();
-    }
+    }gi
     const int originalRounding = fegetround( );
     fesetround(FE_TOWARDZERO);
 

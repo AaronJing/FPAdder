@@ -31,7 +31,7 @@ class FPadder(expWidth: Int, mntWidth: Int, no_round: Boolean, unsigned: Boolean
     } else {
         adderFrontend.ioflag_inf2 := 0.B
         o_exp3 := adderFrontend.ioo_exp2
-        normalized_norm_sum_rounding := adderFrontend.ionorm_sum
+        normalized_norm_sum_rounding := adderFrontend.ionorm_sum(mntWidth+3, 3)
     }
     
 
