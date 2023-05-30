@@ -55,6 +55,38 @@ module unsignedFPadder(
   assign ionorm_sum = {{3'd0}, norm_sum_add}; // @[unsignfpadder.scala 199:16]
 endmodule
 module FPadder(
+  input  [7:0] io_a,
+  input  [7:0] io_b,
+  output [7:0] io_o
+);
+  wire [7:0] adderFrontend_ioa; // @[FPadder.scala 17:105]
+  wire [7:0] adderFrontend_iob; // @[FPadder.scala 17:105]
+  wire  adderFrontend_ioo_sgn; // @[FPadder.scala 17:105]
+  wire [2:0] adderFrontend_iocond; // @[FPadder.scala 17:105]
+  wire [4:0] adderFrontend_ioo_exp2; // @[FPadder.scala 17:105]
+  wire [5:0] adderFrontend_ionorm_sum; // @[FPadder.scala 17:105]
+  wire [2:0] normalized_norm_sum_rounding = adderFrontend_ionorm_sum[5:3]; // @[FPadder.scala 34:65]
+  wire [2:0] _GEN_0 = adderFrontend_iocond >= 3'h4 ? 3'h6 : 3'h7; // @[FPadder.scala 54:28 55:13 58:13]
+  wire [2:0] _GEN_2 = adderFrontend_iocond == 3'h2 ? 3'h0 : _GEN_0; // @[FPadder.scala 51:29 52:13]
+  wire [2:0] _GEN_4 = adderFrontend_iocond == 3'h1 ? 3'h0 : _GEN_2; // @[FPadder.scala 48:29 49:13]
+  wire [4:0] _GEN_5 = adderFrontend_iocond == 3'h1 ? 5'h0 : 5'h1f; // @[FPadder.scala 48:29 50:14]
+  wire [2:0] o_mnt = adderFrontend_iocond == 3'h0 ? normalized_norm_sum_rounding : _GEN_4; // @[FPadder.scala 45:23 46:13]
+  wire [4:0] o_exp3 = adderFrontend_ioo_exp2; // @[FPadder.scala 18:22 33:16]
+  wire [4:0] o_exp4 = adderFrontend_iocond == 3'h0 ? o_exp3 : _GEN_5; // @[FPadder.scala 45:23 47:14]
+  wire [5:0] _io_o_T = {adderFrontend_ioo_sgn,o_exp4}; // @[FPadder.scala 61:37]
+  unsignedFPadder adderFrontend ( // @[FPadder.scala 17:105]
+    .ioa(adderFrontend_ioa),
+    .iob(adderFrontend_iob),
+    .ioo_sgn(adderFrontend_ioo_sgn),
+    .iocond(adderFrontend_iocond),
+    .ioo_exp2(adderFrontend_ioo_exp2),
+    .ionorm_sum(adderFrontend_ionorm_sum)
+  );
+  assign io_o = {_io_o_T,o_mnt[1:0]}; // @[FPadder.scala 61:47]
+  assign adderFrontend_ioa = io_a; // @[FPadder.scala 38:23]
+  assign adderFrontend_iob = io_b; // @[FPadder.scala 39:23]
+endmodule
+module FPadderTOP(
   input        clock,
   input        reset,
   input  [7:0] io_a,
@@ -68,50 +100,35 @@ module FPadder(
   reg [31:0] _RAND_1;
   reg [31:0] _RAND_2;
 `endif // RANDOMIZE_REG_INIT
-  wire [7:0] adderFrontend_ioa; // @[FPadder.scala 25:105]
-  wire [7:0] adderFrontend_iob; // @[FPadder.scala 25:105]
-  wire  adderFrontend_ioo_sgn; // @[FPadder.scala 25:105]
-  wire [2:0] adderFrontend_iocond; // @[FPadder.scala 25:105]
-  wire [4:0] adderFrontend_ioo_exp2; // @[FPadder.scala 25:105]
-  wire [5:0] adderFrontend_ionorm_sum; // @[FPadder.scala 25:105]
-  reg [7:0] a; // @[FPadder.scala 15:28]
-  reg [7:0] b; // @[FPadder.scala 16:28]
-  wire [2:0] normalized_norm_sum_rounding = adderFrontend_ionorm_sum[5:3]; // @[FPadder.scala 42:65]
-  wire [2:0] _GEN_0 = adderFrontend_iocond >= 3'h4 ? 3'h6 : 3'h7; // @[FPadder.scala 62:28 63:13 66:13]
-  wire [2:0] _GEN_2 = adderFrontend_iocond == 3'h2 ? 3'h0 : _GEN_0; // @[FPadder.scala 59:29 60:13]
-  wire [2:0] _GEN_4 = adderFrontend_iocond == 3'h1 ? 3'h0 : _GEN_2; // @[FPadder.scala 56:29 57:13]
-  wire [4:0] _GEN_5 = adderFrontend_iocond == 3'h1 ? 5'h0 : 5'h1f; // @[FPadder.scala 56:29 58:14]
-  wire [2:0] o_mnt = adderFrontend_iocond == 3'h0 ? normalized_norm_sum_rounding : _GEN_4; // @[FPadder.scala 53:23 54:13]
-  wire [4:0] o_exp3 = adderFrontend_ioo_exp2; // @[FPadder.scala 26:22 41:16]
-  wire [4:0] o_exp4 = adderFrontend_iocond == 3'h0 ? o_exp3 : _GEN_5; // @[FPadder.scala 53:23 55:14]
-  reg [7:0] o_t; // @[FPadder.scala 69:22]
-  wire [7:0] _o_t_T_2 = {adderFrontend_ioo_sgn,o_exp4,o_mnt[1:0]}; // @[FPadder.scala 70:46]
-  unsignedFPadder adderFrontend ( // @[FPadder.scala 25:105]
-    .ioa(adderFrontend_ioa),
-    .iob(adderFrontend_iob),
-    .ioo_sgn(adderFrontend_ioo_sgn),
-    .iocond(adderFrontend_iocond),
-    .ioo_exp2(adderFrontend_ioo_exp2),
-    .ionorm_sum(adderFrontend_ionorm_sum)
+  wire [7:0] FPadderModule_io_a; // @[main.scala 17:29]
+  wire [7:0] FPadderModule_io_b; // @[main.scala 17:29]
+  wire [7:0] FPadderModule_io_o; // @[main.scala 17:29]
+  reg [7:0] a; // @[main.scala 18:26]
+  reg [7:0] b; // @[main.scala 19:26]
+  reg [7:0] o_t; // @[main.scala 30:20]
+  FPadder FPadderModule ( // @[main.scala 17:29]
+    .io_a(FPadderModule_io_a),
+    .io_b(FPadderModule_io_b),
+    .io_o(FPadderModule_io_o)
   );
-  assign io_o = o_t; // @[FPadder.scala 71:10]
-  assign adderFrontend_ioa = a; // @[FPadder.scala 46:23]
-  assign adderFrontend_iob = b; // @[FPadder.scala 47:23]
+  assign io_o = o_t; // @[main.scala 32:8]
+  assign FPadderModule_io_a = a; // @[main.scala 26:22]
+  assign FPadderModule_io_b = b; // @[main.scala 27:22]
   always @(posedge clock) begin
-    if (reset) begin // @[FPadder.scala 15:28]
-      a <= 8'h0; // @[FPadder.scala 15:28]
+    if (reset) begin // @[main.scala 18:26]
+      a <= 8'h0; // @[main.scala 18:26]
     end else begin
-      a <= io_a; // @[FPadder.scala 19:7]
+      a <= io_a; // @[main.scala 22:5]
     end
-    if (reset) begin // @[FPadder.scala 16:28]
-      b <= 8'h0; // @[FPadder.scala 16:28]
+    if (reset) begin // @[main.scala 19:26]
+      b <= 8'h0; // @[main.scala 19:26]
     end else begin
-      b <= io_b; // @[FPadder.scala 20:7]
+      b <= io_b; // @[main.scala 23:5]
     end
-    if (reset) begin // @[FPadder.scala 69:22]
-      o_t <= 8'h0; // @[FPadder.scala 69:22]
+    if (reset) begin // @[main.scala 30:20]
+      o_t <= 8'h0; // @[main.scala 30:20]
     end else begin
-      o_t <= _o_t_T_2; // @[FPadder.scala 70:9]
+      o_t <= FPadderModule_io_o; // @[main.scala 31:7]
     end
   end
 // Register and memory initialization

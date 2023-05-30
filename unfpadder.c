@@ -66,7 +66,13 @@ fp fpadder32_truncation(fp u1, fp u2){
     const int originalRounding = fegetround( );
     fesetround(FE_TOWARDZERO);
     fp u3;
-    float result = u1.get_float() + u2.get_float();
+    #ifdef MUL
+        float result = u1.get_float() * u2.get_float();
+    #else
+        float result = u1.get_float() + u2.get_float();
+    #endif 
+    
+    
     u3 = fp(result);
     fesetround(originalRounding);
     return u3;
@@ -78,7 +84,7 @@ fp fpadder32_truncation_unsigned(fp &u1, fp &u2){
     } else {
         u1.get_float() = -u1.get_float();
         u2.get_float() = -u2.get_float();
-    }gi
+    }
     const int originalRounding = fegetround( );
     fesetround(FE_TOWARDZERO);
 

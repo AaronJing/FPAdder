@@ -1,4 +1,4 @@
-circuit FPadder :
+circuit FPadderTOP :
   module unsignedFPadder :
     input clock : Clock
     input reset : Reset
@@ -98,64 +98,78 @@ circuit FPadder :
 
   module FPadder :
     input clock : Clock
+    input reset : Reset
+    output io : { flip a : UInt<8>, flip b : UInt<8>, o : UInt<8>, flip op : UInt<1>, flip round : UInt<2>}
+
+    inst adderFrontend of unsignedFPadder @[FPadder.scala 17:105]
+    adderFrontend.clock <= clock
+    adderFrontend.reset <= reset
+    wire o_exp3 : UInt<5> @[FPadder.scala 18:22]
+    wire normalized_norm_sum_rounding : UInt<3> @[FPadder.scala 19:44]
+    adderFrontend.ioflag_inf2 <= UInt<1>("h0") @[FPadder.scala 32:35]
+    o_exp3 <= adderFrontend.ioo_exp2 @[FPadder.scala 33:16]
+    node _normalized_norm_sum_rounding_T = bits(adderFrontend.ionorm_sum, 5, 3) @[FPadder.scala 34:65]
+    normalized_norm_sum_rounding <= _normalized_norm_sum_rounding_T @[FPadder.scala 34:38]
+    adderFrontend.ioa <= io.a @[FPadder.scala 38:23]
+    adderFrontend.iob <= io.b @[FPadder.scala 39:23]
+    adderFrontend.ioop <= io.op @[FPadder.scala 40:24]
+    wire o_mnt : UInt<3> @[FPadder.scala 43:21]
+    wire o_exp4 : UInt<5> @[FPadder.scala 44:22]
+    node _T = eq(adderFrontend.iocond, UInt<1>("h0")) @[FPadder.scala 45:15]
+    when _T : @[FPadder.scala 45:23]
+      o_mnt <= normalized_norm_sum_rounding @[FPadder.scala 46:13]
+      o_exp4 <= o_exp3 @[FPadder.scala 47:14]
+    else :
+      node _T_1 = eq(adderFrontend.iocond, UInt<1>("h1")) @[FPadder.scala 48:21]
+      when _T_1 : @[FPadder.scala 48:29]
+        o_mnt <= UInt<3>("h0") @[FPadder.scala 49:13]
+        o_exp4 <= UInt<5>("h0") @[FPadder.scala 50:14]
+      else :
+        node _T_2 = eq(adderFrontend.iocond, UInt<2>("h2")) @[FPadder.scala 51:21]
+        when _T_2 : @[FPadder.scala 51:29]
+          o_mnt <= UInt<3>("h0") @[FPadder.scala 52:13]
+          o_exp4 <= UInt<5>("h1f") @[FPadder.scala 53:14]
+        else :
+          node _T_3 = geq(adderFrontend.iocond, UInt<3>("h4")) @[FPadder.scala 54:21]
+          when _T_3 : @[FPadder.scala 54:28]
+            node _o_mnt_T = cat(UInt<2>("h3"), UInt<1>("h0")) @[FPadder.scala 55:25]
+            o_mnt <= _o_mnt_T @[FPadder.scala 55:13]
+            o_exp4 <= UInt<5>("h1f") @[FPadder.scala 56:14]
+          else :
+            node _o_mnt_T_1 = mux(UInt<1>("h1"), UInt<3>("h7"), UInt<3>("h0")) @[Bitwise.scala 77:12]
+            o_mnt <= _o_mnt_T_1 @[FPadder.scala 58:13]
+            o_exp4 <= UInt<5>("h1f") @[FPadder.scala 59:14]
+    node _io_o_T = cat(adderFrontend.ioo_sgn, o_exp4) @[FPadder.scala 61:37]
+    node _io_o_T_1 = bits(o_mnt, 1, 0) @[FPadder.scala 61:55]
+    node _io_o_T_2 = cat(_io_o_T, _io_o_T_1) @[FPadder.scala 61:47]
+    io.o <= _io_o_T_2 @[FPadder.scala 61:10]
+
+  module FPadderTOP :
+    input clock : Clock
     input reset : UInt<1>
     output io : { flip a : UInt<8>, flip b : UInt<8>, o : UInt<8>, flip op : UInt<1>, flip round : UInt<2>}
 
+    inst FPadderModule of FPadder @[main.scala 17:29]
+    FPadderModule.clock <= clock
+    FPadderModule.reset <= reset
     reg a : UInt<8>, clock with :
-      reset => (reset, UInt<8>("h0")) @[FPadder.scala 15:28]
+      reset => (reset, UInt<8>("h0")) @[main.scala 18:26]
     reg b : UInt<8>, clock with :
-      reset => (reset, UInt<8>("h0")) @[FPadder.scala 16:28]
+      reset => (reset, UInt<8>("h0")) @[main.scala 19:26]
     reg op : UInt<1>, clock with :
-      reset => (reset, UInt<1>("h0")) @[FPadder.scala 17:29]
+      reset => (reset, UInt<1>("h0")) @[main.scala 20:27]
     reg round : UInt<2>, clock with :
-      reset => (reset, UInt<2>("h0")) @[FPadder.scala 18:30]
-    a <= io.a @[FPadder.scala 19:7]
-    b <= io.b @[FPadder.scala 20:7]
-    op <= io.op @[FPadder.scala 21:8]
-    round <= io.round @[FPadder.scala 22:11]
-    inst adderFrontend of unsignedFPadder @[FPadder.scala 25:105]
-    adderFrontend.clock <= clock
-    adderFrontend.reset <= reset
-    wire o_exp3 : UInt<5> @[FPadder.scala 26:22]
-    wire normalized_norm_sum_rounding : UInt<3> @[FPadder.scala 27:44]
-    adderFrontend.ioflag_inf2 <= UInt<1>("h0") @[FPadder.scala 40:35]
-    o_exp3 <= adderFrontend.ioo_exp2 @[FPadder.scala 41:16]
-    node _normalized_norm_sum_rounding_T = bits(adderFrontend.ionorm_sum, 5, 3) @[FPadder.scala 42:65]
-    normalized_norm_sum_rounding <= _normalized_norm_sum_rounding_T @[FPadder.scala 42:38]
-    adderFrontend.ioa <= a @[FPadder.scala 46:23]
-    adderFrontend.iob <= b @[FPadder.scala 47:23]
-    adderFrontend.ioop <= op @[FPadder.scala 48:24]
-    wire o_mnt : UInt<3> @[FPadder.scala 51:21]
-    wire o_exp4 : UInt<5> @[FPadder.scala 52:22]
-    node _T = eq(adderFrontend.iocond, UInt<1>("h0")) @[FPadder.scala 53:15]
-    when _T : @[FPadder.scala 53:23]
-      o_mnt <= normalized_norm_sum_rounding @[FPadder.scala 54:13]
-      o_exp4 <= o_exp3 @[FPadder.scala 55:14]
-    else :
-      node _T_1 = eq(adderFrontend.iocond, UInt<1>("h1")) @[FPadder.scala 56:21]
-      when _T_1 : @[FPadder.scala 56:29]
-        o_mnt <= UInt<3>("h0") @[FPadder.scala 57:13]
-        o_exp4 <= UInt<5>("h0") @[FPadder.scala 58:14]
-      else :
-        node _T_2 = eq(adderFrontend.iocond, UInt<2>("h2")) @[FPadder.scala 59:21]
-        when _T_2 : @[FPadder.scala 59:29]
-          o_mnt <= UInt<3>("h0") @[FPadder.scala 60:13]
-          o_exp4 <= UInt<5>("h1f") @[FPadder.scala 61:14]
-        else :
-          node _T_3 = geq(adderFrontend.iocond, UInt<3>("h4")) @[FPadder.scala 62:21]
-          when _T_3 : @[FPadder.scala 62:28]
-            node _o_mnt_T = cat(UInt<2>("h3"), UInt<1>("h0")) @[FPadder.scala 63:25]
-            o_mnt <= _o_mnt_T @[FPadder.scala 63:13]
-            o_exp4 <= UInt<5>("h1f") @[FPadder.scala 64:14]
-          else :
-            node _o_mnt_T_1 = mux(UInt<1>("h1"), UInt<3>("h7"), UInt<3>("h0")) @[Bitwise.scala 77:12]
-            o_mnt <= _o_mnt_T_1 @[FPadder.scala 66:13]
-            o_exp4 <= UInt<5>("h1f") @[FPadder.scala 67:14]
+      reset => (reset, UInt<2>("h0")) @[main.scala 21:28]
+    a <= io.a @[main.scala 22:5]
+    b <= io.b @[main.scala 23:5]
+    op <= io.op @[main.scala 24:6]
+    round <= io.round @[main.scala 25:9]
+    FPadderModule.io.a <= a @[main.scala 26:22]
+    FPadderModule.io.b <= b @[main.scala 27:22]
+    FPadderModule.io.op <= op @[main.scala 28:23]
+    FPadderModule.io.round <= round @[main.scala 29:26]
     reg o_t : UInt<8>, clock with :
-      reset => (reset, UInt<8>("h0")) @[FPadder.scala 69:22]
-    node _o_t_T = cat(adderFrontend.ioo_sgn, o_exp4) @[FPadder.scala 70:36]
-    node _o_t_T_1 = bits(o_mnt, 1, 0) @[FPadder.scala 70:54]
-    node _o_t_T_2 = cat(_o_t_T, _o_t_T_1) @[FPadder.scala 70:46]
-    o_t <= _o_t_T_2 @[FPadder.scala 70:9]
-    io.o <= o_t @[FPadder.scala 71:10]
+      reset => (reset, UInt<8>("h0")) @[main.scala 30:20]
+    o_t <= FPadderModule.io.o @[main.scala 31:7]
+    io.o <= o_t @[main.scala 32:8]
 

@@ -1,9 +1,9 @@
 #!/bin/bash
 
 CC=g++
-CFLAGS="-DUNSIGNED"
+CFLAGS="-DMUL"
 
 $CC $CFLAGS unfpadder.c -o unfpadder
-rm saved_test
-./unfpadder
-sbt testOnly
+# rm saved_test
+# ./unfpadder
+sbt "testOnly unsignedfpadder.unsignedfpmul"
