@@ -61,7 +61,10 @@ void print_fp(fp u){
     cout << dec << "DEC Sign: " << sign << " exponent: " << exponent << " mantissa32: " << mantissa32 << " mantissa16: " << mantissa16 << endl;
     cout << hex << "0x" << u.get_uint32_t() << endl;
 }
-
+fp fpadder32(fp u1, fp u2){
+    fp u3 = fp(u1.get_float() * u2.get_float());
+    return u3;
+}
 fp fpadder32_truncation(fp u1, fp u2){
     const int originalRounding = fegetround( );
     fesetround(FE_TOWARDZERO);
