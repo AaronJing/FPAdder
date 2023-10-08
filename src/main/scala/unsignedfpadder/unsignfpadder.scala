@@ -170,7 +170,9 @@ class unsignedFPadder(expWidth: Int, mntWidth: Int, no_round_optimization: Boole
 
     // total bits p+1
     // the last Op_perf is from two's complementing
-    val sum1 = Cat(0.U(1.W), complemented_a_mnts) +& shifted_b_mnts
+    val sum1 = 0.U ## complemented_a_mnts +& shifted_b_mnts
+    //val sum1 = 0.U ## shifted_b_mnts
+    // val sum1 = 0.U((p+1).W)
     // get the most significant bit of sum1, it is carry when addition and Sign when subtraction
     val carrySignBit = sum1(p)
 
@@ -196,6 +198,7 @@ class unsignedFPadder(expWidth: Int, mntWidth: Int, no_round_optimization: Boole
     iocond := cond
     ioo_sgn := o_sgn
     ioo_exp2 := o_exp_add
-    ionorm_sum := norm_sum_add
+    // ioo_exp2 := 0.U
+    ionorm_sum := norm_sum_add ## 0.U(3.W)
   }
 }
