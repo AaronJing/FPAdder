@@ -21,7 +21,7 @@ class floatTofloat(in_expWidth: Int, in_mntWidth: Int, out_expWidth: Int, out_mn
     val expIn = io.a(input_width - 2, in_mntWidth)
     val adjustedExp = expIn.zext - biasIN.zext + biasOUT.zext
     if (in_expWidth > out_expWidth) {
-        io.o(output_width-2, out_mntWidth) := Mux(adjustedExp < 0.S, 0.U, Mux(adjustedExp >= MAXEXPOUT, MAXEXPOUT, adjustedExp))
+        io.o(output_width-2, out_mntWidth) := Mux(adjustedExp < 0.S, 0.U, Mux(adjustedExp >= MAXEXPOUT.zext, MAXEXPOUT, adjustedExp))
     } else if (in_expWidth < out_expWidth) {
         io.o(output_width-2, out_mntWidth) := adjustedExp
     } else {
@@ -38,9 +38,9 @@ class floatTofloat(in_expWidth: Int, in_mntWidth: Int, out_expWidth: Int, out_mn
     // special case handle
     
 
-    val mntAzero = (~io.a(mntWidth-1,0).orR)
+    val mntAzero = (~io.a(in_mntWidth-1,0).orR)
     val Azero = (~expIn.orR) & mntAzero
     when(Azero){
-        io.o = 0.U
+        io.o := 0.U
     }
 }

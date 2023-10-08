@@ -11,6 +11,7 @@
 // bad practice I dont care here
 using namespace std;
 union U {
+    unsigned long i;
     uint32_t n;
     float f;
 };
@@ -24,6 +25,9 @@ struct fp {
     };     
     fp(float a){
         u.f = a;
+    };
+    fp(unsigned long z){
+        u.i = z;
     };
     uint32_t sign() {
         return u.n >> 31;
@@ -62,7 +66,7 @@ void print_fp(fp u){
     cout << hex << "0x" << u.get_uint32_t() << endl;
 }
 fp fpadder32(fp u1, fp u2){
-    fp u3 = fp(u1.get_float() * u2.get_float());
+    fp u3 = fp(u1.get_float() + u2.get_float());
     return u3;
 }
 fp fpadder32_truncation(fp u1, fp u2){
@@ -78,6 +82,18 @@ fp fpadder32_truncation(fp u1, fp u2){
     
     u3 = fp(result);
     fesetround(originalRounding);
+    return u3;
+}
+
+fp fpadder32_unsigned(fp &u1, fp &u2){
+    if (rand() % 2 == 1){
+        u1.get_float() = u1.get_float();
+        u2.get_float() = u2.get_float();
+    } else {
+        u1.get_float() = -u1.get_float();
+        u2.get_float() = -u2.get_float();
+    }
+    fp u3 = fp(u1.get_float() + u2.get_float());
     return u3;
 }
 fp fpadder32_truncation_unsigned(fp &u1, fp &u2){
@@ -122,21 +138,36 @@ fp rand_float_gen(){
 }
 void store_test(fp u1, fp u2, fp u3){
     ofstream test;
-    test.open("saved_test", ios::out | ios::app); 
+    test.open("saved_test", ios::out|ios::app); 
     test << hex << "h"<< u1.get_uint32_t()<< " " << "h"<< u2.get_uint32_t() << " " << "h" <<u3.get_uint32_t() << "\n";
     test.close();
 }
 int main() {
     srand (static_cast <unsigned> (time(0)));
-    int num = 100;
+    int num = 200;
     for (int i = 0; i < num; i++) {
         fp u1 = rand_float_gen();
         fp u2 = rand_float_gen();
+        // unsigned long temp = 0xbb3bec18;
+        // fp u1 = fp(temp);
+        // temp = 0x3f4937e1;
+        // fp u2 = fp(temp);
+        #ifdef NOROUND
         #ifdef UNSIGNED
             fp u3 = fpadder32_truncation_unsigned(u1, u2);
         #else
             fp u3 = fpadder32_truncation(u1, u2);
-        #endif 
+        #endif
+        #else
+        #ifdef UNSIGNED
+            fp u3 =fpadder32_unsigned(u1, u2);
+        #else
+            
+            fp u3 = fpadder32(u1, u2);
+        #endif
+        #endif
+
+
         store_test(u1, u2, u3);
         cout << u1.get_float() << " " << u2.get_float() << " " << u3.get_float() << "\n";
     }
